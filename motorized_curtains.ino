@@ -71,7 +71,15 @@ void loop() {
 void stop(){
   previousState = state;
   state = STOP;
+  powerOffMotor();  
   Serial.println("stop");
+}
+
+void powerOffMotor(){
+  digitalWrite(8, LOW);
+  digitalWrite(9, LOW);
+  digitalWrite(10, LOW);
+  digitalWrite(11, LOW);
 }
 
 void startMove(){
