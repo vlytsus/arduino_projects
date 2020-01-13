@@ -11,6 +11,14 @@
  */
 #include <Stepper.h>
 
+void debug(String str){
+  //Serial.println(str);
+}
+
+void debug(int num){
+  //Serial.println(num);
+}
+
 const int ledPin = 13;
 const int stepsPerRevolution = 2048;
 const int buttonPin = 5;
@@ -44,17 +52,17 @@ static uint32_t wakeupTime=0;
 void setup() {
   
   Serial.begin(9600);
-  Serial.println("brgin setup");
+  debug("brgin setup");
   stepper.setSpeed(6);
   pinMode(ledPin, OUTPUT);
 }
 
 void loop() {
-  Serial.print(".");
-  if(bttonPressed()){
-    delay(1000);
-    Serial.print("state=");
-    Serial.println(state);
+  debug(".");
+  if(buttonPressed()){
+    delay(500);
+    debug("state=");
+    debug(state);
     if(state != STOP){
       if(state == MOVE_DOWN && minPosition == DEFAULT_MIN_POSITION){
         minPosition = position;
@@ -74,7 +82,7 @@ void stop(){
   previousState = state;
   state = STOP;
   powerOffMotor();  
-  Serial.println("stop");
+  debug("stop");
 }
 
 void powerOffMotor(){
@@ -82,22 +90,22 @@ void powerOffMotor(){
   digitalWrite(9, LOW);
   digitalWrite(10, LOW);
   digitalWrite(11, LOW);
-  wakeupTime==millis();
+  wakeupTime=millis();
 }
 
 void wakeupUsbCharger(){
-  if(millis() - wakeupTime > 20000){
+  if(millis() - wakeupTime > 15000){
     digitalWrite(8, HIGH);
     digitalWrite(9, HIGH);
     digitalWrite(10, HIGH);
     digitalWrite(11, HIGH);
+    delay(100);
     powerOffMotor();
-    wakeupTime==millis();
   } 
 }
 
 void startMove(){
-  Serial.println("startMove");
+  debug("startMove");
   if(previousState == MOVE_DOWN){
     moveUp();
   }else{
@@ -112,11 +120,12 @@ void continueMove(){
     moveUp();
   } else {
     wakeupUsbCharger();
+    delay(300);
   }
 }
 
 void moveDown(){
-  Serial.println("moveDown");
+  debug("moveDown");
   if(position < minPosition){
     stop();
     return;
@@ -124,11 +133,11 @@ void moveDown(){
   stepper.step(STEPS_PER_ITERATION * DIRECTION);
   state = MOVE_DOWN;
   position--;
-  Serial.println(position);
+  debug(position);
 }
 
 void moveUp(){
-  Serial.println("moveUp");
+  debug("moveUp");
   if(position >= maxPosition){
     stop();
     return;
@@ -136,10 +145,10 @@ void moveUp(){
   stepper.step(-STEPS_PER_ITERATION * DIRECTION);
   state = MOVE_UP;
   position++;
-  Serial.println(position);
+  debug(position);
 }
 
-boolean bttonPressed(){
+boolean buttonPressed(){
   int buttonState = digitalRead(buttonPin);
   return buttonState == 1;
 }
