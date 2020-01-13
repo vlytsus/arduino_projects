@@ -39,11 +39,13 @@ int position = 0;
 int minPosition = -1000;
 int maxPosition = 1000;
 
+static uint32_t wakeupTime=0;
+
 void setup() {
   
   Serial.begin(9600);
   Serial.println("brgin setup");
-  stepper.setSpeed(9);
+  stepper.setSpeed(6);
   pinMode(ledPin, OUTPUT);
 }
 
@@ -80,6 +82,18 @@ void powerOffMotor(){
   digitalWrite(9, LOW);
   digitalWrite(10, LOW);
   digitalWrite(11, LOW);
+  wakeupTime==millis();
+}
+
+void wakeupUsbCharger(){
+  if(millis() - wakeupTime > 20000){
+    digitalWrite(8, HIGH);
+    digitalWrite(9, HIGH);
+    digitalWrite(10, HIGH);
+    digitalWrite(11, HIGH);
+    powerOffMotor();
+    wakeupTime==millis();
+  } 
 }
 
 void startMove(){
@@ -96,6 +110,8 @@ void continueMove(){
     moveDown();
   } else if(state == MOVE_UP){    
     moveUp();
+  } else {
+    wakeupUsbCharger();
   }
 }
 
