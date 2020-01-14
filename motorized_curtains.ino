@@ -10,6 +10,8 @@
  * Project is build using cheap ULN2003 driver & stepper motor
  */
 #include <Stepper.h>
+#include <avr/sleep.h>
+#include "LowPower.h"
 
 void debug(String str){
   //Serial.println(str);
@@ -19,9 +21,10 @@ void debug(int num){
   //Serial.println(num);
 }
 
-const int ledPin = 13;
+const byte ledPin = 13;
+const byte interruptPin = 2;
 const int stepsPerRevolution = 2048;
-const int buttonPin = 5;
+const byte buttonPin = 5;
 
 // Wiring:
 // Pin 8 to IN1 on the ULN2003 driver
@@ -40,27 +43,43 @@ Stepper stepper = Stepper(stepsPerRevolution, 8, 10, 9, 11);
 #define DEFAULT_MIN_POSITION -1000
 
 #define STEPS_PER_ITERATION 100
+#define INTERRUPT_WHEN_HIGHT HIGH
 
-int state = STOP;
-int previousState = STOP;
+volatile int state = STOP;
+volatile int previousState = STOP;
 int position = 0;
-int minPosition = -1000;
-int maxPosition = 1000;
+volatile int minPosition = -1000;
+volatile int maxPosition = 1000;
 
 static uint32_t wakeupTime=0;
+static uint32_t buttonDebounceTime=0;
 
-void setup() {
-  
+void setup() {  
   Serial.begin(9600);
   debug("brgin setup");
   stepper.setSpeed(6);
   pinMode(ledPin, OUTPUT);
+  pinMode(interruptPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(interruptPin), onButtonPressed, RISING );
 }
 
 void loop() {
-  debug(".");
-  if(buttonPressed()){
-    delay(500);
+  //debug(".");
+  if(state == MOVE_DOWN){
+    moveDown();
+  } else if(state == MOVE_UP){    
+    moveUp();
+  } else {
+    LowPower.idle(SLEEP_1S, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_OFF, 
+                SPI_OFF, USART0_OFF, TWI_OFF);
+    delay(1000);
+    wakeupUsbCharger();
+  }
+}
+
+void onButtonPressed(){  
+  if(millis() - buttonDebounceTime > 500){
+    buttonDebounceTime = millis();
     debug("state=");
     debug(state);
     if(state != STOP){
@@ -71,10 +90,8 @@ void loop() {
       }
       stop();
     } else {
-      startMove();
+      changeMoveDirection();
     }
-  }else{
-    continueMove();
   }
 }
 
@@ -82,7 +99,7 @@ void stop(){
   previousState = state;
   state = STOP;
   powerOffMotor();  
-  debug("stop");
+  debug("stop");  
 }
 
 void powerOffMotor(){
@@ -104,23 +121,12 @@ void wakeupUsbCharger(){
   } 
 }
 
-void startMove(){
-  debug("startMove");
+void changeMoveDirection(){
+  debug("changeMoveDirection");
   if(previousState == MOVE_DOWN){
-    moveUp();
+    state = MOVE_UP;
   }else{
-    moveDown();
-  }
-}
-
-void continueMove(){  
-  if(state == MOVE_DOWN){
-    moveDown();
-  } else if(state == MOVE_UP){    
-    moveUp();
-  } else {
-    wakeupUsbCharger();
-    delay(300);
+    state = MOVE_UP;
   }
 }
 
@@ -131,7 +137,7 @@ void moveDown(){
     return;
   }
   stepper.step(STEPS_PER_ITERATION * DIRECTION);
-  state = MOVE_DOWN;
+  
   position--;
   debug(position);
 }
@@ -143,12 +149,7 @@ void moveUp(){
     return;
   }
   stepper.step(-STEPS_PER_ITERATION * DIRECTION);
-  state = MOVE_UP;
+  
   position++;
   debug(position);
-}
-
-boolean buttonPressed(){
-  int buttonState = digitalRead(buttonPin);
-  return buttonState == 1;
 }
