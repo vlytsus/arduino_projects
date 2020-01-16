@@ -14,17 +14,20 @@
 #include "LowPower.h"
 
 void debug(String str){
-  //Serial.println(str);
+  Serial.println(str);
 }
 
-void debug(int num){
-  //Serial.println(num);
+void debug(String str, int num){
+  Serial.print(str);
+  Serial.println(num);
 }
 
+const byte lightPin = A0;
 const byte ledPin = 13;
 const byte interruptPin = 2;
 const int stepsPerRevolution = 2048;
 const byte buttonPin = 5;
+
 
 // Wiring:
 // Pin 8 to IN1 on the ULN2003 driver
@@ -34,20 +37,28 @@ const byte buttonPin = 5;
 // Create stepper object called 'stepper', note the pin order:
 Stepper stepper = Stepper(stepsPerRevolution, 8, 10, 9, 11);
 
-#define STOP 0
-#define MOVE_UP   3 
-#define MOVE_DOWN 4
+#define STATE_STOP 0
+#define STATE_MOVE      1
+#define DIRECTION_UP   3 
+#define DIRECTION_DOWN 4
 
 #define DIRECTION 1
 #define DEFAULT_MAX_POSITION 1000
 #define DEFAULT_MIN_POSITION -1000
 
+#define WAKEUP_INTERVAL 5000
+#define BUTTON_DEBOUNCE_INTERVAL 500
+
 #define STEPS_PER_ITERATION 100
 #define INTERRUPT_WHEN_HIGHT HIGH
 
-volatile int state = STOP;
-volatile int previousState = STOP;
+#define LIGHT_BARRIER 200
+#define LIGHT_COUNTER_BARRIER 5
+
+volatile int state = STATE_STOP;
+volatile int direction = DIRECTION_DOWN;
 int position = 0;
+int lightCounter = 0;
 volatile int minPosition = -1000;
 volatile int maxPosition = 1000;
 
@@ -56,94 +67,131 @@ static uint32_t buttonDebounceTime=0;
 
 void setup() {  
   Serial.begin(9600);
-  debug("brgin setup");
-  stepper.setSpeed(6);
+  //debug("begin setup");
+  stepper.setSpeed(9);
+  pinMode(lightPin, INPUT);
   pinMode(ledPin, OUTPUT);
   pinMode(interruptPin, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(interruptPin), onButtonPressed, RISING );
+  attachInterrupt(digitalPinToInterrupt(interruptPin), onButtonPressedInterruption, RISING );
 }
 
-void loop() {
-  //debug(".");
-  if(state == MOVE_DOWN){
-    moveDown();
-  } else if(state == MOVE_UP){    
-    moveUp();
-  } else {
-    LowPower.idle(SLEEP_1S, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_OFF, 
-                SPI_OFF, USART0_OFF, TWI_OFF);
+void loop() { 
+  //debug("state=", state);
+  
+  if(state == STATE_STOP){    
+    //stop();
     delay(1000);
     wakeupUsbCharger();
-  }
+    dLowPower.idle(SLEEP_1S, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_OFF, SPI_OFF, USART0_OFF, TWI_OFF);
+  } else {
+    if(direction == DIRECTION_DOWN){
+      moveDown();
+    }else{
+      moveUp();
+    }
+  }  
 }
 
-void onButtonPressed(){  
-  if(millis() - buttonDebounceTime > 500){
+void onButtonPressedInterruption(){  
+  if(millis() - buttonDebounceTime > BUTTON_DEBOUNCE_INTERVAL){
     buttonDebounceTime = millis();
-    debug("state=");
-    debug(state);
-    if(state != STOP){
-      if(state == MOVE_DOWN && minPosition == DEFAULT_MIN_POSITION){
-        minPosition = position;
-      }else if (state == MOVE_DOWN && maxPosition == DEFAULT_MAX_POSITION){
-        maxPosition = position;
-      }
+    //debug("state=", state);
+    if(state == STATE_MOVE){
+      learnMinMaxPosition();
       stop();
+      //powerOffMotor();
     } else {
       changeMoveDirection();
-    }
+    }    
   }
 }
 
 void stop(){
-  previousState = state;
-  state = STOP;
-  powerOffMotor();  
-  debug("stop");  
+  //debug("stop");
+  state = STATE_STOP;
+  powerOffMotor();
 }
 
 void powerOffMotor(){
+  //debug("powerOffMotor");
   digitalWrite(8, LOW);
   digitalWrite(9, LOW);
   digitalWrite(10, LOW);
   digitalWrite(11, LOW);
-  wakeupTime=millis();
+}
+
+void learnMinMaxPosition(){
+  if(direction == DIRECTION_DOWN && minPosition == DEFAULT_MIN_POSITION){
+    minPosition = position;
+  }else if (direction == DIRECTION_UP && maxPosition == DEFAULT_MAX_POSITION){
+    maxPosition = position;
+  }
 }
 
 void wakeupUsbCharger(){
-  if(millis() - wakeupTime > 15000){
+  uint32_t diff= millis() - wakeupTime;
+  //debug("try wakeupUsbCharger:", diff);
+  if(diff > WAKEUP_INTERVAL){
+    //debug("wakeup!!!");
     digitalWrite(8, HIGH);
     digitalWrite(9, HIGH);
     digitalWrite(10, HIGH);
     digitalWrite(11, HIGH);
     delay(100);
     powerOffMotor();
+    wakeupTime = millis();
+    checkLightLevel();
   } 
 }
 
-void changeMoveDirection(){
-  debug("changeMoveDirection");
-  if(previousState == MOVE_DOWN){
-    state = MOVE_UP;
-  }else{
-    state = MOVE_UP;
+void checkLightLevel(){  
+  int lightLevel = analogRead(lightPin);
+  if(lightLevel > LIGHT_BARRIER){
+    if(lightCounter < 10) lightCounter++;
+  } else {
+    if(lightCounter > 0) lightCounter--;
   }
+
+  if(position <= minPosition + 10 && lightCounter > LIGHT_COUNTER_BARRIER){//curtains  closed
+    state = STATE_MOVE;
+    direction = DIRECTION_UP; // open curtain
+    lightCounter = 10;
+  } else if( position >= maxPosition - 10 && lightCounter < LIGHT_COUNTER_BARRIER){
+    state = STATE_MOVE;
+    direction = DIRECTION_DOWN; // open curtain
+    lightCounter = 0;
+  }
+
+  //debug("lightCounter:", lightCounter);
+  //debug("position=", position);
+  //debug("minPosition=", minPosition);
+  //debug("maxPosition=", maxPosition);
+}
+
+void changeMoveDirection(){
+  //debug("changeMoveDirection");
+  if(direction == DIRECTION_DOWN){
+      direction = DIRECTION_UP;
+  }else{
+    direction = DIRECTION_DOWN;
+  }
+  state = STATE_MOVE;
 }
 
 void moveDown(){
-  debug("moveDown");
-  if(position < minPosition){
+  //debug("moveDown");
+  if(position <= minPosition){
     stop();
     return;
   }
   stepper.step(STEPS_PER_ITERATION * DIRECTION);
   
   position--;
-  debug(position);
+  //debug("position=", position);
 }
 
 void moveUp(){
-  debug("moveUp");
+  //debug("moveUp");
   if(position >= maxPosition){
     stop();
     return;
@@ -151,5 +199,5 @@ void moveUp(){
   stepper.step(-STEPS_PER_ITERATION * DIRECTION);
   
   position++;
-  debug(position);
+  //debug("position=", position);
 }
