@@ -24,16 +24,16 @@ void debug(String str, int num){
 }
 
 //PINS SETUP --BEGIN---
-#define PIN_IR_RECV 12
+#define PIN_IR_RECV 7
 #define PIN_AMBIENT_LIGHT A0
 #define PIN_BUTTON_INTERRUPT 2
-#define PIN_HEIGHT_POTENTIOMETR A2
+#define PIN_HEIGHT_POTENTIOMETR A5
 //PINS SETUP --END---
 
 //STEPPER SETUP --BEGIN--
 #define STEP_PER_REVOLUTION 2048
 #define STEPS_PER_ITERATION 100
-#define STEPPER_SPEED 8
+#define STEPPER_SPEED 5
 Stepper stepper = Stepper(STEP_PER_REVOLUTION, 8, 10, 9, 11);
 //STEPPER SETUP --END--
 
@@ -59,7 +59,7 @@ int lightLevel = 0;
 int lightCounter = 0;
 int irBtnUpCode = 0; //Infrared control button up code
 int irBtnDownCode = 0;
-int windowHeight = 500; //window curtain height is configured by 10k potentiometer
+int windowHeight = 0; //window curtain height is configured by 10k potentiometer
 static uint32_t buttonDebounceTime=0;
 static uint32_t wakeupTime=0;
 
@@ -72,21 +72,21 @@ int position = 0;
 //STATE SETUP --END--
 
 void setup() {  
-  //Serial.begin(9600);
+  Serial.begin(9600);
   //debug("begin setup");
   stepper.setSpeed(STEPPER_SPEED);
   pinMode(PIN_AMBIENT_LIGHT, INPUT);
   irrecv.enableIRIn();
-  //irrecv.blink13(true);
+  irrecv.blink13(true);
   //pinMode(PIN_BUTTON_INTERRUPT, INPUT_PULLUP);
   //attachInterrupt(digitalPinToInterrupt(PIN_BUTTON_INTERRUPT), onButtonPressedInterruption, RISING );
 }
 
 void loop() { 
-  //debug("state=", state);
+  ////debug("state=", state);
   //delay(50);
-  //debug("val=", val);
-  //windowHeight = analogRead(PIN_HEIGHT_POTENTIOMETR);  
+  windowHeight = analogRead(PIN_HEIGHT_POTENTIOMETR); 
+  //debug("windowHeight=", windowHeight); 
   onButtonPressed();
   if(state == STATE_STOPPED){    
     //stop();
@@ -120,27 +120,35 @@ void onButtonPressedInterruption(){
 
 void onButtonPressed(){ 
   if (irrecv.decode(&irResults)){
+    int irResult = irResults.value;
     if(irBtnUpCode == 0){
-      irBtnUpCode = irResults.value;      
+      irBtnUpCode = irResult;      
       //debug("learn irBtnUpCode=", irBtnUpCode);
     } else if(irBtnDownCode == 0){
-      irBtnDownCode = irResults.value;
+      irBtnDownCode = irResult;
       //debug("learn irBtnDownCode=", irBtnDownCode);
     } else {
       if(state == STATE_MOVE){
         learnMinMaxPosition();
         stop();
       } else {
-        if(irResults.value == irBtnUpCode){
+        if(irResult == irBtnUpCode){
           direction = DIRECTION_UP;
-        }else if(irResults.value == irBtnDownCode) {
+          //debug("move UP by IR");
+          //debug("irResults.value=", irResult);
+          state = STATE_MOVE;
+        }else if(irResult == irBtnDownCode) {
           direction = DIRECTION_DOWN;          
+          //debug("move DOWN by IR");
+          //debug("irResults.value=", irResult);
+          state = STATE_MOVE;
+        } else {
+          //debug("test irBtnDownCode=", irBtnUpCode);
+          //debug("test irBtnDownCode=", irBtnDownCode);          
+          //debug("test irResults.value=", irResult);
         }
-        state = STATE_MOVE;
-        //debug("move by IR");
       }      
     }    
-    //debug("irResults.value=", irResults.value);
     resetIdleTimer();
   }
   irrecv.resume();
@@ -148,7 +156,7 @@ void onButtonPressed(){
 
 void learnMinMaxPosition(){
     /*if(direction == DIRECTION_DOWN && minPosition == DEFAULT_MIN_POSITION){
-      debug("learn minPosition=", position);
+      //debug("learn minPosition=", position);
       minPosition = position;
     }else */    
     if (direction == DIRECTION_UP && maxPosition == DEFAULT_MAX_POSITION){
@@ -160,7 +168,6 @@ void learnMinMaxPosition(){
 
 void stop(){
   //debug("stop");
-  //debug("val=", val);
   state = STATE_STOPPED;
   powerOffMotor();
   resetIdleTimer();
@@ -175,8 +182,7 @@ void powerOffMotor(){
 }
 
 void wakeupTimer(){
-  uint32_t diff= millis() - wakeupTime;
-  //debug("try wakeupUsbCharger:", diff);
+  uint32_t diff = millis() - wakeupTime;
   if(diff > WAKEUP_INTERVAL){
     //debug("wakeup");
     //wakeupUsbCharger();    
@@ -241,7 +247,7 @@ void blink(int times){
 }
 
 void changeMoveDirection(){
-  debug("changeMoveDirection");
+  //debug("changeMoveDirection");
   if(direction == DIRECTION_DOWN){
       direction = DIRECTION_UP;
   }else{
