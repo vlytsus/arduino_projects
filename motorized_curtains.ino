@@ -14,15 +14,6 @@
 //#include "LowPower.h"
 #include <IRremote.h>
 
-void debug(String str){
-  Serial.println(str);
-}
-
-void debug(String str, int num){
-  Serial.print(str);
-  Serial.println(num);
-}
-
 //PINS SETUP --BEGIN---
 #define PIN_IR_RECV 7
 #define PIN_AMBIENT_LIGHT A0
@@ -51,12 +42,12 @@ decode_results irResults;
 #define DEFAULT_MAX_POSITION 1000
 #define DEFAULT_MIN_POSITION -1000
 #define WAKEUP_INTERVAL 20000
-#define LIGHT_BARRIER 230
+#define LIGHT_BARRIER 200
 #define LIGHT_COUNTER_BARRIER 5
 #define BUTTON_DEBOUNCE_INTERVAL 500
 
 int lightLevel = 0;
-int lightCounter = 0;
+int lightCounter = 5;
 int irBtnUpCode = 0; //Infrared control button up code
 int irBtnDownCode = 0;
 int windowHeight = 0; //window curtain height is configured by 10k potentiometer
@@ -73,9 +64,8 @@ int position = 0;
 
 void setup() {  
   Serial.begin(9600);
-  //debug("begin setup");
+  debug("begin setup");
   stepper.setSpeed(STEPPER_SPEED);
-  pinMode(PIN_AMBIENT_LIGHT, INPUT);
   irrecv.enableIRIn();
   irrecv.blink13(true);
   //pinMode(PIN_BUTTON_INTERRUPT, INPUT_PULLUP);
@@ -83,10 +73,9 @@ void setup() {
 }
 
 void loop() { 
-  ////debug("state=", state);
+  debug_1s();
   //delay(50);
   windowHeight = analogRead(PIN_HEIGHT_POTENTIOMETR); 
-  //debug("windowHeight=", windowHeight); 
   onButtonPressed();
   if(state == STATE_STOPPED){    
     //stop();
@@ -106,7 +95,7 @@ void loop() {
 void onButtonPressedInterruption(){  
   if(millis() - buttonDebounceTime > BUTTON_DEBOUNCE_INTERVAL){
     buttonDebounceTime = millis();
-    //debug("state=", state);
+    debug("state=", state);
     if(state == STATE_MOVE){
       learnMinMaxPosition();
       stop();
@@ -123,10 +112,10 @@ void onButtonPressed(){
     int irResult = irResults.value;
     if(irBtnUpCode == 0){
       irBtnUpCode = irResult;      
-      //debug("learn irBtnUpCode=", irBtnUpCode);
+      debug("learn irBtnUpCode=", irBtnUpCode);
     } else if(irBtnDownCode == 0){
       irBtnDownCode = irResult;
-      //debug("learn irBtnDownCode=", irBtnDownCode);
+      debug("learn irBtnDownCode=", irBtnDownCode);
     } else {
       if(state == STATE_MOVE){
         learnMinMaxPosition();
@@ -134,18 +123,18 @@ void onButtonPressed(){
       } else {
         if(irResult == irBtnUpCode){
           direction = DIRECTION_UP;
-          //debug("move UP by IR");
-          //debug("irResults.value=", irResult);
+          debug("move UP by IR");
+          debug("irResults.value=", irResult);
           state = STATE_MOVE;
         }else if(irResult == irBtnDownCode) {
           direction = DIRECTION_DOWN;          
-          //debug("move DOWN by IR");
-          //debug("irResults.value=", irResult);
+          debug("move DOWN by IR");
+          debug("irResults.value=", irResult);
           state = STATE_MOVE;
         } else {
-          //debug("test irBtnDownCode=", irBtnUpCode);
-          //debug("test irBtnDownCode=", irBtnDownCode);          
-          //debug("test irResults.value=", irResult);
+          debug("test irBtnDownCode=", irBtnUpCode);
+          debug("test irBtnDownCode=", irBtnDownCode);          
+          debug("test irResults.value=", irResult);
         }
       }      
     }    
@@ -156,25 +145,25 @@ void onButtonPressed(){
 
 void learnMinMaxPosition(){
     /*if(direction == DIRECTION_DOWN && minPosition == DEFAULT_MIN_POSITION){
-      //debug("learn minPosition=", position);
+      debug("learn minPosition=", position);
       minPosition = position;
     }else */    
     if (direction == DIRECTION_UP && maxPosition == DEFAULT_MAX_POSITION){
-      //debug("learn maxPosition=", position);
+      debug("learn maxPosition=", position);
       maxPosition = position;
       minPosition = maxPosition - windowHeight;
     }
   }
 
 void stop(){
-  //debug("stop");
+  debug("stop");
   state = STATE_STOPPED;
   powerOffMotor();
   resetIdleTimer();
 }
 
 void powerOffMotor(){
-  //debug("powerOffMotor");
+  debug("powerOffMotor");
   digitalWrite(8, LOW);
   digitalWrite(9, LOW);
   digitalWrite(10, LOW);
@@ -184,7 +173,7 @@ void powerOffMotor(){
 void wakeupTimer(){
   uint32_t diff = millis() - wakeupTime;
   if(diff > WAKEUP_INTERVAL){
-    //debug("wakeup");
+    debug("wakeup");
     //wakeupUsbCharger();    
     checkLightLevel();
     powerOffMotor();
@@ -207,29 +196,70 @@ void wakeupUsbCharger(){
 
 void checkLightLevel(){  
   int lightLevel = analogRead(PIN_AMBIENT_LIGHT);
+  debug("lightLevel=", lightLevel);
   if(lightLevel > LIGHT_BARRIER){
     if(lightCounter < 10) lightCounter++;
   } else {
     if(lightCounter > 0) lightCounter--;
   }
 
-  if((position <= minPosition + 5) && (lightCounter > LIGHT_COUNTER_BARRIER)){//curtains  closed
+  if(/*(position <= minPosition + 5) && */(lightCounter > LIGHT_COUNTER_BARRIER)){//curtains are closed - need to open
     state = STATE_MOVE;
     direction = DIRECTION_UP; // open curtain
     lightCounter = 10;
-  } else if((position >= maxPosition - 5) && (lightCounter < LIGHT_COUNTER_BARRIER)){
+  } else if(/*(position >= maxPosition - 5) && */(lightCounter < LIGHT_COUNTER_BARRIER)){//curtains are open - need to close
     state = STATE_MOVE;
     direction = DIRECTION_DOWN; // open curtain
     lightCounter = 0;
   }
+  debug();
+}
 
-  //blink(lightLevel / 100);
-  
-  //debug("lightLevel=", lightLevel);
-  //debug("lightCounter=", lightCounter);
-  //debug("position=", position);
-  //debug("minPosition=", minPosition);
-  //debug("maxPosition=", maxPosition);
+void changeMoveDirection(){
+  debug("changeMoveDirection");
+  if(direction == DIRECTION_DOWN){
+      direction = DIRECTION_UP;
+  }else{
+    direction = DIRECTION_DOWN;
+  }
+  state = STATE_MOVE;
+}
+
+void moveDown(){
+  debug("moveDown");
+  if(position <= minPosition){
+    debug("minimum reached");
+    stop();
+    return;
+  }
+  stepper.step(STEPS_PER_ITERATION * DIRECTION);  
+  position--;
+}
+
+void moveUp(){
+  debug("moveUp");
+  if(position >= maxPosition){
+    debug("maximum reached");
+    stop();
+    return;
+  }
+  stepper.step(-STEPS_PER_ITERATION * DIRECTION);
+  position++;
+}
+
+void debug_1s(){
+  debug("lightLevel=", lightLevel);
+  debugln("lightCounter=", lightCounter);
+}
+
+void debug(){
+  //blink(lightLevel / 100);  
+  debug("lightLevel=", lightLevel);
+  debug("lightCounter=", lightCounter);
+  debug("position=", position);
+  debug("minPosition=", minPosition);
+  debug("maxPosition=", maxPosition);
+  debug("windowHeight=", windowHeight);
 }
 
 void blink(int times){
@@ -246,38 +276,17 @@ void blink(int times){
   }
 }
 
-void changeMoveDirection(){
-  //debug("changeMoveDirection");
-  if(direction == DIRECTION_DOWN){
-      direction = DIRECTION_UP;
-  }else{
-    direction = DIRECTION_DOWN;
-  }
-  state = STATE_MOVE;
+void debug(String str){
+  Serial.println(str);
 }
 
-void moveDown(){
-  //debug("moveDown");
-  if(position <= minPosition){
-    //debug("minimum reached");
-    stop();
-    return;
-  }
-  stepper.step(STEPS_PER_ITERATION * DIRECTION);
-  
-  position--;
-  //debug("position=", position);
+void debug(String str, int num){
+  Serial.print(str);
+  Serial.print(num);
+  Serial.print(", ");
 }
 
-void moveUp(){
-  //debug("moveUp");
-  if(position >= maxPosition){
-    //debug("maximum reached");
-    stop();
-    return;
-  }
-  stepper.step(-STEPS_PER_ITERATION * DIRECTION);
-  
-  position++;
-  //debug("position=", position);
+void debugln(String str, int num){
+  Serial.print(str);
+  Serial.println(num);
 }
